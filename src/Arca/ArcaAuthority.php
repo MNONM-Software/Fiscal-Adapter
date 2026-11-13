@@ -2,6 +2,7 @@
 
 namespace Mnonm\FiscalAdapter\Arca;
 
+use Carbon\CarbonImmutable;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapCall;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapTransport;
 use Mnonm\FiscalAdapter\Arca\Wsaa\AccessTicket;
@@ -121,6 +122,102 @@ final class ArcaAuthority implements FiscalAuthority
             throw new UnsupportedDocument('ARCA sólo consulta cartas de porte (ArcaWaybillQuery); llegó '.$query::class.'.');
         }
 
+        $found = $this->consult($context, $query);
+
+        if ($found instanceof Outcome) {
+            return $found;
+        }
+
+        ['data' => $data, 'errors' => $errors] = $found;
+
+        return $data['ctg'] !== null
+            ? Outcome::authorized($data['ctg'], $data, $errors)
+            : Outcome::rejected($errors !== [] ? $errors : [new Reason('no_ctg', 'ARCA no devolvió la carta de porte ni errores.')]);
+    }
+
+    public function reconcile(CallContext $context, Issuable|Cancellation $document): Outcome
+    {
+        if ($document instanceof ArcaWaybill) {
+            return $this->reconcileIssue($context, $document);
+        }
+
+        if ($document instanceof ArcaWaybillAnnulment) {
+            return $this->reconcileCancellation($context, $document);
+        }
+
+        throw new UnsupportedDocument('ARCA sólo reconcilia cartas de porte y sus anulaciones; llegó '.$document::class.'.');
+    }
+
+    private function reconcileIssue(CallContext $context, ArcaWaybill $waybill): Outcome
+    {
+        $found = $this->consult($context, ArcaWaybillQuery::byOrderNumber($waybill->branch, $waybill->orderNumber, $waybill->cpeType));
+
+        if ($found instanceof Outcome) {
+            return $found;
+        }
+
+        ['data' => $data, 'errors' => $errors] = $found;
+
+        if ($data['ctg'] === null) {
+            return Outcome::unavailable(new Reason('not_found', 'ARCA no tiene una carta de porte con este número de orden; es seguro reenviarla.'));
+        }
+
+        if (! $this->matchesIdentity($waybill, $data)) {
+            return Outcome::rejected([new Reason('order_number_taken', "ARCA ya tiene otra carta de porte con este número de orden: CTG {$data['ctg']}, con otro chofer, patentes o peso bruto.")]);
+        }
+
+        return Outcome::authorized($data['ctg'], $data, $errors);
+    }
+
+    private function reconcileCancellation(CallContext $context, ArcaWaybillAnnulment $annulment): Outcome
+    {
+        $query = $annulment->ctg !== null
+            ? ArcaWaybillQuery::byCtg($annulment->ctg)
+            : ArcaWaybillQuery::byOrderNumber($annulment->branch, $annulment->orderNumber, $annulment->cpeType);
+
+        $found = $this->consult($context, $query);
+
+        if ($found instanceof Outcome) {
+            return $found;
+        }
+
+        ['data' => $data, 'errors' => $errors] = $found;
+
+        if ($data['state'] === self::STATE_ANNULLED) {
+            return Outcome::authorized($data['ctg'] ?? $annulment->ctg ?? "{$annulment->branch}-{$annulment->orderNumber}", $data, $errors);
+        }
+
+        return Outcome::unavailable(new Reason('not_annulled', 'ARCA no tiene la carta de porte anulada (estado '.($data['state'] ?? 'desconocido').'); es seguro reintentar la anulación.'));
+    }
+
+    /**
+     * Chofer, patentes (normalizadas y ordenadas) y bruto; si la respuesta no trae alguno, no coincide.
+     *
+     * @param  array{ctg: ?string, state: ?string, issued_at: ?CarbonImmutable, expires_at: ?CarbonImmutable, pdf: ?string, driver_cuit: ?string, plates: ?list<string>, gross_kg: ?int}  $data
+     */
+    private function matchesIdentity(ArcaWaybill $waybill, array $data): bool
+    {
+        if ($data['driver_cuit'] === null || $data['plates'] === null || $data['gross_kg'] === null) {
+            return false;
+        }
+
+        $normalize = function (array $plates): array {
+            $plates = array_map(fn (string $plate): string => strtoupper((string) preg_replace('/\s+/', '', $plate)), $plates);
+            sort($plates);
+
+            return $plates;
+        };
+
+        return $data['driver_cuit'] === $waybill->driverCuit->value
+            && $normalize($data['plates']) === $normalize($waybill->normalizedPlates())
+            && $data['gross_kg'] === $waybill->grossKg;
+    }
+
+    /**
+     * @return Outcome|array{data: array{ctg: ?string, state: ?string, issued_at: ?CarbonImmutable, expires_at: ?CarbonImmutable, pdf: ?string, driver_cuit: ?string, plates: ?list<string>, gross_kg: ?int}, errors: list<Reason>} el desenlace si la consulta falló o fue ambigua
+     */
+    private function consult(CallContext $context, ArcaWaybillQuery $query): Outcome|array
+    {
         $response = $this->call($context, 'consultarCPEAutomotor', fn (AccessTicket $ticket, Cuit $cuit) => $query->envelope($ticket, $cuit));
 
         if ($response instanceof Outcome) {
@@ -137,17 +234,7 @@ final class ArcaAuthority implements FiscalAuthority
             return $failure;
         }
 
-        $data = WaybillResult::data($respuesta);
-
-        return $data['ctg'] !== null
-            ? Outcome::authorized($data['ctg'], $data, $errors)
-            : Outcome::rejected($errors !== [] ? $errors : [new Reason('no_ctg', 'ARCA no devolvió la carta de porte ni errores.')]);
-    }
-
-    public function reconcile(CallContext $context, Issuable|Cancellation $document): Outcome
-    {
-        // TODO Task 9
-        return Outcome::unknown(new Reason('not_implemented', 'La reconciliación todavía no está implementada.'));
+        return ['data' => WaybillResult::data($respuesta), 'errors' => $errors];
     }
 
     /**
