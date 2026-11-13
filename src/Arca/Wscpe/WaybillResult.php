@@ -19,7 +19,7 @@ final class WaybillResult
     {
         $document = @simplexml_load_string($xml);
         $found = $document === false ? [] : $document->xpath('//*[local-name()="respuesta"]');
-        $respuesta = $found === [] || $found === null || $found === false ? null : $found[0];
+        $respuesta = $found[0] ?? null;
 
         $errors = [];
         foreach ($respuesta?->errores->error ?? [] as $error) {
