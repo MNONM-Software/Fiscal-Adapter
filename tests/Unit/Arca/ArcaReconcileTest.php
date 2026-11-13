@@ -62,14 +62,21 @@ describe('issue reconciliation', function () {
         expect($outcome->reasons[0]->code)->toBe('not_found')->and($outcome->reasons[0]->message)->toContain('ARCA respondió: 2010 No existe');
     });
 
-    it('missing identity fields do not match', function () {
+    it('missing identity fields cannot be verified and stay unknown', function (string $respuesta) {
         [$authority, $context] = authority();
-        fakeWscpe(W::response('ConsultarCPEAutomotorResp', W::HEADER));
+        fakeWscpe(W::response('ConsultarCPEAutomotorResp', $respuesta));
 
         $outcome = $authority->reconcile($context, Fixtures::waybill(['plates' => ['AB123CD']]));
 
-        expect($outcome->isRejected())->toBeTrue()->and($outcome->reasonCodes())->toBe(['order_number_taken']);
-    });
+        expect($outcome->isUnknown())->toBeTrue()
+            ->and($outcome->reasonCodes())->toBe(['identity_unverifiable'])
+            ->and($outcome->reasons[0]->message)->toContain('101234567890');
+    })->with([
+        'no identity at all' => [W::HEADER],
+        'no driver' => [W::HEADER.'<datosCarga><pesoBruto>45000</pesoBruto></datosCarga><transporte><dominio>AB123CD</dominio></transporte>'],
+        'no plates' => [W::HEADER.'<datosCarga><pesoBruto>45000</pesoBruto></datosCarga><transporte><cuitChofer>20123456786</cuitChofer></transporte>'],
+        'no gross weight' => [W::HEADER.'<transporte><dominio>AB123CD</dominio><cuitChofer>20123456786</cuitChofer></transporte>'],
+    ]);
 
     it('rejects foreign documents', function () {
         [$authority, $context] = authority();

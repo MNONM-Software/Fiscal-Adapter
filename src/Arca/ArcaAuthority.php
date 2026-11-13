@@ -238,6 +238,10 @@ final class ArcaAuthority implements FiscalAuthority
             return Outcome::unavailable(new Reason('not_found', 'ARCA no tiene una carta de porte con este número de orden; es seguro reenviarla.'.$detail));
         }
 
+        if ($data['driver_cuit'] === null || $data['plates'] === null || $data['gross_kg'] === null) {
+            return Outcome::unknown(new Reason('identity_unverifiable', "ARCA tiene una carta de porte con este número de orden (CTG {$data['ctg']}) pero la consulta no trae chofer, patentes o peso bruto: no se puede saber si es la enviada. No emitir con otro número de orden; verificarla a mano."));
+        }
+
         if (! $this->matchesIdentity($waybill, $data)) {
             return Outcome::rejected([new Reason('order_number_taken', "ARCA ya tiene otra carta de porte con este número de orden: CTG {$data['ctg']}, con otro chofer, patentes o peso bruto.")]);
         }
@@ -285,16 +289,13 @@ final class ArcaAuthority implements FiscalAuthority
     }
 
     /**
-     * Chofer, patentes (normalizadas y ordenadas) y bruto; si la respuesta no trae alguno, no coincide.
+     * Chofer, patentes (normalizadas y ordenadas) y bruto. Sólo se llama con los tres presentes: si
+     * falta alguno no hay identidad que comparar ({@see reconcileIssue()}).
      *
-     * @param  array{ctg: ?string, state: ?string, issued_at: ?CarbonImmutable, expires_at: ?CarbonImmutable, pdf: ?string, driver_cuit: ?string, plates: ?list<string>, gross_kg: ?int}  $data
+     * @param  array{ctg: ?string, state: ?string, issued_at: ?CarbonImmutable, expires_at: ?CarbonImmutable, pdf: ?string, driver_cuit: string, plates: list<string>, gross_kg: int}  $data
      */
     private function matchesIdentity(ArcaWaybill $waybill, array $data): bool
     {
-        if ($data['driver_cuit'] === null || $data['plates'] === null || $data['gross_kg'] === null) {
-            return false;
-        }
-
         $normalize = function (array $plates): array {
             $plates = array_map(fn (string $plate): string => strtoupper((string) preg_replace('/\s+/', '', $plate)), $plates);
             sort($plates);
