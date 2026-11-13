@@ -154,3 +154,18 @@ it('ticket debug info hides token and sign', function () {
     expect(print_r($ticket, true))->not->toContain('SECRET')
         ->and($ticket->__debugInfo())->toHaveKey('expiresAt');
 });
+
+it('unparsable expirationTime is unknown', function () {
+    Http::fake(['*' => Http::response(WsaaResponses::loginCms('TOK', 'SIG', 'no-es-una-fecha'), 200)]);
+    [$client, $context] = wsaaFixture();
+
+    $outcome = $client->login($context, 'wscpe');
+
+    expect($outcome->isUnknown())->toBeTrue()->and($outcome->reasonCodes())->toBe(['malformed_response']);
+});
+
+it('an empty CMS body is an infrastructure error, not a credential one', function () {
+    expect(fn () => WsaaClient::extractCmsBody("MIME-Version: 1.0\r\nContent-Type: application/x-pkcs7-mime\r\n"))
+        ->toThrow(RuntimeException::class, 'CMS');
+    expect(WsaaClient::extractCmsBody("Header: x\r\n\r\nQUJD\r\nREVG\r\n"))->toBe('QUJDREVG');
+});

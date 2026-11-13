@@ -3,6 +3,7 @@
 namespace Mnonm\FiscalAdapter\Arca\Wsaa;
 
 use Carbon\CarbonImmutable;
+use Carbon\Exceptions\InvalidFormatException;
 use Mnonm\FiscalAdapter\Arca\ArcaEndpoints;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapCall;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapTransport;
@@ -77,7 +78,9 @@ final class WsaaClient
         $output = tempnam(sys_get_temp_dir(), 'cms');
 
         try {
-            file_put_contents($input, $tra);
+            if ($input === false || $output === false || file_put_contents($input, $tra) === false) {
+                throw new \RuntimeException('No se pudieron crear los archivos temporales para firmar el pedido de acceso a WSAA.');
+            }
             $signed = @openssl_pkcs7_sign(
                 $input,
                 $output,
@@ -90,13 +93,33 @@ final class WsaaClient
                 throw new InvalidCredential('No se pudo firmar el pedido de acceso a WSAA con la credencial.');
             }
 
-            $parts = preg_split("/\r?\n\r?\n/", (string) file_get_contents($output), 2);
-
-            return preg_replace('/\s+/', '', $parts[1] ?? '');
+            return self::extractCmsBody((string) file_get_contents($output));
         } finally {
-            @unlink($input);
-            @unlink($output);
+            if ($input !== false) {
+                @unlink($input);
+            }
+            if ($output !== false) {
+                @unlink($output);
+            }
         }
+    }
+
+    /**
+     * Cuerpo base64 (sin saltos) de la salida MIME de `openssl_pkcs7_sign`.
+     *
+     * @internal
+     *
+     * @throws \RuntimeException
+     */
+    public static function extractCmsBody(string $mime): string
+    {
+        $parts = preg_split("/\r?\n\r?\n/", $mime, 2);
+        $body = preg_replace('/\s+/', '', $parts[1] ?? '');
+        if ($body === null || $body === '') {
+            throw new \RuntimeException('La firma CMS del pedido de acceso a WSAA salió vacía.');
+        }
+
+        return $body;
     }
 
     /**
@@ -118,6 +141,12 @@ final class WsaaClient
             return Outcome::unknown(new Reason('malformed_response', 'WSAA respondió un ticket de acceso incompleto o que no es XML válido.'));
         }
 
-        return new AccessTicket($token, $sign, CarbonImmutable::parse($expiration));
+        try {
+            $expiresAt = CarbonImmutable::parse($expiration);
+        } catch (InvalidFormatException) {
+            return Outcome::unknown(new Reason('malformed_response', 'WSAA respondió un ticket de acceso con una fecha de vencimiento inválida.'));
+        }
+
+        return new AccessTicket($token, $sign, $expiresAt);
     }
 }
