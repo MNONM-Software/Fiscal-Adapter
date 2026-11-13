@@ -254,8 +254,10 @@ CUIT del chofer, patentes y peso bruto. La anulación es `Authorized` cuando ARC
   peso bruto con el `ArcaWaybill` mandado: coincide → `Authorized`; no coincide → `Rejected` con código
   `order_number_taken`; la respuesta no trae alguno de los tres → `Unknown` con `identity_unverifiable` (la forma de
   la respuesta autorizada nunca se vio en vivo); no hay ninguna → `Unavailable` (no quedó en ARCA: reenviar **el
-  mismo documento** es seguro, como en #524). Si la consulta misma falla, es `Unknown` con `reconcile_failed`:
-  nunca un `Rejected` que lleve a pedir otro número. Con CTG, la consulta es
+  mismo documento** es seguro, como en #524). Si la consulta misma vuelve rechazada, es `Unknown` con `reconcile_failed`:
+  nunca un `Rejected` que lleve a pedir otro número. Si la consulta no llegó (conexión, falla del servidor, WSAA),
+  vuelve `Unavailable`: reenviar el mismo documento es seguro, porque si ya estaba ARCA responde 2241 y se reconcilia
+  de nuevo. Con CTG, la consulta es
   por CTG. En la anulación: estado anulado → `Authorized`; sigue activa → `Unavailable` (se reenvía `anularCPE`,
   como en #524). **[C, heredado: bug real hallado en la
   revisión de #524]**
