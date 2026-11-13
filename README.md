@@ -5,7 +5,7 @@ interfaz común.
 
 ## Instalación
 
-El paquete es privado y no está en Packagist; se instala por VCS. En el `composer.json` del
+El paquete no está en Packagist; se instala por VCS. En el `composer.json` del
 proyecto:
 
 ```json
