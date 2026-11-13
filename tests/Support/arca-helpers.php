@@ -67,3 +67,9 @@ function annulment(): ArcaWaybillAnnulment
 {
     return new ArcaWaybillAnnulment(1, 419, AnnulmentReason::Other, 'x');
 }
+
+function soapClientFault(string $message): string
+{
+    return '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault>'
+        ."<faultcode>soap:Client</faultcode><faultstring>{$message}</faultstring></soap:Fault></soap:Body></soap:Envelope>";
+}

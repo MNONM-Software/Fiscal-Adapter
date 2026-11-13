@@ -225,7 +225,7 @@ final class ArcaAuthority implements FiscalAuthority
         $found = $this->consult($context, ArcaWaybillQuery::byOrderNumber($waybill->branch, $waybill->orderNumber, $waybill->cpeType));
 
         if ($found instanceof Outcome) {
-            return $found;
+            return $this->lookupFailed($found);
         }
 
         ['data' => $data, 'errors' => $errors] = $found;
@@ -254,7 +254,7 @@ final class ArcaAuthority implements FiscalAuthority
         $found = $this->consult($context, $query);
 
         if ($found instanceof Outcome) {
-            return $found;
+            return $this->lookupFailed($found);
         }
 
         ['data' => $data, 'errors' => $errors] = $found;
@@ -264,6 +264,24 @@ final class ArcaAuthority implements FiscalAuthority
         }
 
         return Outcome::unavailable(new Reason('not_annulled', 'ARCA no tiene la carta de porte anulada (estado '.($data['state'] ?? 'desconocido').'); es seguro reintentar la anulación.'));
+    }
+
+    /**
+     * La consulta de una reconciliación falló: un rechazo de la consulta misma (p. ej. un SOAP Fault
+     * `Client` de WSCPE) no dice nada del pedido original, que pudo haber quedado autorizado. Devolver
+     * `Rejected` haría que quien llama emita otra vez con otro número de orden: dos CTG para el mismo
+     * camión. Por eso se vuelve `Unknown`. El único rechazo de una reconciliación es
+     * `order_number_taken`, que sale de comparar la identidad, no de acá.
+     */
+    private function lookupFailed(Outcome $outcome): Outcome
+    {
+        if (! $outcome->isRejected()) {
+            return $outcome;
+        }
+
+        $detail = implode('; ', array_map(fn (Reason $reason): string => "{$reason->code} {$reason->message}", $outcome->reasons));
+
+        return Outcome::unknown(new Reason('reconcile_failed', "No se pudo consultar a ARCA para reconciliar: no se sabe si el pedido original llegó; no emitir con otro número de orden. Motivo: {$detail}."));
     }
 
     /**

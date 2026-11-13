@@ -109,3 +109,28 @@ it('internal error during reconcile stays unknown', function (string $kind) {
 
     expect($outcome->isUnknown())->toBeTrue()->and($outcome->reasonCodes())->toBe(['internal_error']);
 })->with(['issue', 'annulment']);
+
+describe('lookup failures', function () {
+    it('a WSCPE client fault during reconcile is unknown, never rejected', function (string $kind) {
+        [$authority, $context] = authority();
+        Http::fake(['*wscpe*' => Http::response(soapClientFault('Token expirado'), 500)]);
+        $document = $kind === 'issue' ? Fixtures::waybill() : annulment();
+
+        $outcome = $authority->reconcile($context, $document);
+
+        expect($outcome->isUnknown())->toBeTrue()
+            ->and($outcome->reasonCodes())->toBe(['reconcile_failed'])
+            ->and($outcome->reasons[0]->message)->toContain('soap_client_fault')->toContain('Token expirado');
+    })->with(['issue', 'annulment']);
+
+    it('a WSAA client fault during reconcile is never rejected', function (string $kind) {
+        [$authority, $context] = authority(seedTicket: false);
+        Http::fake(['*wsaa*' => Http::response(soapClientFault('Certificado expirado'), 500)]);
+        $document = $kind === 'issue' ? Fixtures::waybill() : annulment();
+
+        $outcome = $authority->reconcile($context, $document);
+
+        expect($outcome->isRejected())->toBeFalse();
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'wscpe'));
+    })->with(['issue', 'annulment']);
+});
