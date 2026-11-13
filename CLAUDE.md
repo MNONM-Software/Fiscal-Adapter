@@ -49,8 +49,10 @@ SOAP. `tests/ArchTest.php` lo cuida para `Contracts`, `Exceptions` y `Testing`.
 
 - `src/` raíz: núcleo (`Outcome`, `CallContext`, `Credential`, `CallObserver`, `FiscalManager`),
   `Contracts/`, `Exceptions/`, `Facades/Fiscal` (con `fake()`), `Testing/FakeAuthority`.
-- `src/Arca/`: el driver ARCA. `Wsaa/` (ticket de acceso, `TicketStore`), `Wscpe/` (documentos y
-  XML de cartas de porte), `Soap/` (transporte sobre `Http`).
+- `src/Arca/`: el driver ARCA. `ArcaWaybillAuthority` (contrato del adaptador: ciclo de vida +
+  último número, catálogos, `forgetTicket`), `Wsaa/` (ticket de acceso, `TicketStore`), `Wscpe/`
+  (documentos y XML de cartas de porte), `Soap/` (transporte sobre `Http`), `Testing/FakeArcaAuthority`
+  (lo que devuelve `Fiscal::fake()`, compone `FakeAuthority`).
 - `FiscalAdapterServiceProvider` es el único punto de la raíz que arma cosas de ARCA (la fábrica
   `arca` del manager, con el `TicketStore` del contenedor o `MissingTicketStore` si no hay uno).
 - Agregar una autoridad: `Fiscal::extend('nombre', fn () => new MiAutoridad(...))`.

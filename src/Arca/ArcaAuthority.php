@@ -14,7 +14,6 @@ use Mnonm\FiscalAdapter\Arca\Wscpe\WaybillResult;
 use Mnonm\FiscalAdapter\Arca\Wscpe\WscpeXml;
 use Mnonm\FiscalAdapter\CallContext;
 use Mnonm\FiscalAdapter\Contracts\Cancellation;
-use Mnonm\FiscalAdapter\Contracts\FiscalAuthority;
 use Mnonm\FiscalAdapter\Contracts\Issuable;
 use Mnonm\FiscalAdapter\Contracts\Query;
 use Mnonm\FiscalAdapter\Exceptions\UnsupportedDocument;
@@ -24,7 +23,7 @@ use Mnonm\FiscalAdapter\Reason;
 /**
  * ARCA: cartas de porte automotor de granos por WSCPE.
  */
-final class ArcaAuthority implements FiscalAuthority
+final class ArcaAuthority implements ArcaWaybillAuthority
 {
     private const SERVICE = 'wscpe';
 

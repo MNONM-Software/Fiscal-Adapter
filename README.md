@@ -90,16 +90,39 @@ El resultado es siempre un valor, nunca una excepción por algo que dijo o no di
 
 ### Tests de quien usa el paquete
 
+`Fiscal::fake()` reemplaza todas las autoridades por un único `FakeArcaAuthority`: respuestas
+programadas por clase de documento, más los métodos propios del adaptador ARCA. Tipando contra
+`Mnonm\FiscalAdapter\Arca\ArcaWaybillAuthority` (que implementan el adaptador real y el fake), el
+flujo completo de emisión corre bajo el fake:
+
 ```php
-$fake = Fiscal::fake()->respondWith(ArcaWaybill::class, Outcome::rejected([new Reason('2002', 'x')]));
+use Mnonm\FiscalAdapter\Arca\ArcaWaybillAuthority;
+
+// Código bajo prueba
+$arca = Fiscal::authority('arca');
+assert($arca instanceof ArcaWaybillAuthority);
+$last = $arca->lastOrderNumber($context, branch: 1);
+$outcome = $arca->issue($context, $waybillConNumero($last->data['last_order_number'] + 1));
+
+// Test
+$fake = Fiscal::fake()
+    ->respondToMethod('lastOrderNumber', Outcome::authorized('418', ['last_order_number' => 418]))
+    ->respondWith(ArcaWaybill::class, Outcome::rejected([new Reason('2002', 'x')]));
 
 // ... código bajo prueba ...
 
+$fake->assertMethodCalled('lastOrderNumber', fn ($context, int $branch) => $branch === 1);
 $fake->assertIssued(fn ($document, $context) => $document->orderNumber === 419);
 ```
 
-Sin respuesta programada, el fake devuelve `Authorized` con `FAKE-1`, `FAKE-2`... `Fiscal::fake()`
-lanza `LogicException` en producción.
+`respondToMethod()` acepta `lastOrderNumber`, `provinces`, `localities` y `grainTypes`, con un
+`Outcome` o un closure que recibe el contexto y los argumentos enteros. `forgetTicket()` se registra
+y se verifica con `assertMethodCalled('forgetTicket')`.
+
+Sin respuesta programada, el fake devuelve `Authorized` con `FAKE-1`, `FAKE-2`... para los
+documentos, `last_order_number` 0 y catálogos sin ítems. `assertNothingSent()` falla si se envió un
+documento o se hizo una consulta del adaptador. `Fiscal::fake()` lanza `LogicException` en
+producción.
 
 ### Pruebas contra homologación (opcionales)
 
