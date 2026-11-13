@@ -112,7 +112,8 @@ en un adaptador. **[C]**
   - `query(CallContext, Query): Outcome`
   - `reconcile(CallContext, Issuable|Cancellation): Outcome` — averigua si un pedido dudoso llegó (§6.4). Nunca
     devuelve `Unknown` por "no lo encontré": si el organismo confirma que no está, es `Unavailable` y reenviar es
-    seguro. `Unknown` sólo si la consulta misma no tuvo respuesta clara. **[C]**
+    seguro. `Unknown` sólo si la consulta misma no tuvo respuesta clara. Nunca devuelve `Rejected` salvo una
+    diferencia positiva de identidad: si la consulta falla, es `Unknown`. **[C; ajustado tras la revisión final]**
   - `supports(object $document): bool` — qué documentos sabe tratar.
   Lo que es propio de un país y no es ciclo de vida (catálogos, último número de orden) se expone en el adaptador
   concreto, no en la interfaz. **[C]**
@@ -146,7 +147,10 @@ en un adaptador. **[C]**
 
 - `Fiscal::authority('arca')` resuelve el adaptador desde el contenedor, con su `TicketStore` y su `CallObserver`.
 - `Fiscal::fake()` al estilo `Http::fake()`: respuestas programadas por documento y aserciones
-  (`assertIssued`, `assertNothingSent`). Quien la usa lo necesita para sus tests. **[C]**
+  (`assertIssued`, `assertNothingSent`). Quien la usa lo necesita para sus tests. **[C]** Devuelve un fake del
+  adaptador ARCA (`Arca\Testing\FakeArcaAuthority`, que implementa `Arca\ArcaWaybillAuthority`) para que también
+  cubra último número de orden y catálogos: el flujo de emisión los necesita. Es el segundo punto, junto al
+  service provider, donde la capa Laravel nombra ARCA. **[C, revisión final]**
 - El fake no corre en producción: si `app()->isProduction()`, `fake()` falla. **[C, heredado de Artisano Fiscal]**
 - Config publicable (ambiente, timeouts, URLs). Sin migraciones, sin modelos, sin comandos que escriban en una
   base. **[C]**
@@ -210,8 +214,10 @@ CUIT del chofer, patentes y peso bruto. La anulación es `Authorized` cuando ARC
   - El lock no se pide dentro de una transacción de base de quien la usa: con REPEATABLE READ la relectura no ve
     el ticket que otro proceso acaba de guardar. Se documenta para quien la usa.
 - **El ticket guarda qué CUIT puede representar en el momento de emitirse.** Una delegación nueva no aparece hasta
-  el próximo ticket. → La librería expone cómo descartar el ticket de una credencial y el error lo dice. **[C,
-  medido en homologación el 13/10/2026]**
+  el próximo ticket. → La librería expone cómo descartar el ticket de una credencial (`forgetTicket()`), explicado
+  en el README. **[C, medido en homologación el 13/10/2026]**
+- Una falla de WSAA (autenticación) no llegó a WSCPE: se devuelve `Unavailable` con código `auth_failed`, salvo
+  `ticket_already_held` y `lock_timeout`. **[C, revisión final]**
 
 ### 6.3 Transporte SOAP
 
@@ -246,8 +252,10 @@ CUIT del chofer, patentes y peso bruto. La anulación es `Authorized` cuando ARC
 - **Reconciliación con identidad.** La consulta por número de orden puede encontrar la carta de porte **de otro
   camión**, porque un intento rechazado libera el número y otro lo toma. `reconcile()` compara chofer, patentes y
   peso bruto con el `ArcaWaybill` mandado: coincide → `Authorized`; no coincide → `Rejected` con código
-  `order_number_taken`; no hay ninguna → `Unavailable` (no quedó en ARCA: reenviar es seguro, como en #524). Si la
-  consulta misma no responde, su resultado es el del transporte (`Unknown`/`Unavailable`). Con CTG, la consulta es
+  `order_number_taken`; la respuesta no trae alguno de los tres → `Unknown` con `identity_unverifiable` (la forma de
+  la respuesta autorizada nunca se vio en vivo); no hay ninguna → `Unavailable` (no quedó en ARCA: reenviar **el
+  mismo documento** es seguro, como en #524). Si la consulta misma falla, es `Unknown` con `reconcile_failed`:
+  nunca un `Rejected` que lleve a pedir otro número. Con CTG, la consulta es
   por CTG. En la anulación: estado anulado → `Authorized`; sigue activa → `Unavailable` (se reenvía `anularCPE`,
   como en #524). **[C, heredado: bug real hallado en la
   revisión de #524]**
