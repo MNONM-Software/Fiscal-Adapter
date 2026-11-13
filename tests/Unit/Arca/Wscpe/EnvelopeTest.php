@@ -89,5 +89,5 @@ it('queries by order number', function () {
 it('builds the SOAP action from the method', fn () => expect(WscpeXml::soapAction('anularCPE'))->toBe('https://serviciosjava.afip.gob.ar/wscpe/anularCPE'));
 
 it('substitutes invalid UTF-8 instead of dropping the text', function () {
-    expect(\Mnonm\FiscalAdapter\Arca\Wscpe\WscpeXml::text("ab\xC3\x28cd"))->toContain('ab')->toContain('cd')->not->toBe('');
+    expect(WscpeXml::text("ab\xC3\x28cd"))->toContain('ab')->toContain('cd')->not->toBe('');
 });
