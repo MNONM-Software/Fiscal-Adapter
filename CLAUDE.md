@@ -33,6 +33,9 @@ $RUN vendor/bin/pest
 
 **Antes de cerrar un cambio: `composer test` en verde** (pest + `pint --test` + phpstan). El grupo
 `homologation` queda fuera de la corrida por defecto: pega contra los servicios reales.
+Se aplica por directorio (`tests/Pest.php`) y se corre a mano con `--group=homologation` y las variables
+`FISCAL_HOMO_CERT`/`FISCAL_HOMO_KEY`/`FISCAL_HOMO_CUIT` (ver README). Nunca en CI; nunca un certificado
+real de producción.
 
 ## La frontera
 

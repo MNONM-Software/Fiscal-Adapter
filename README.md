@@ -97,6 +97,22 @@ $fake->assertIssued(fn ($document, $context) => $document->orderNumber === 419);
 Sin respuesta programada, el fake devuelve `Authorized` con `FAKE-1`, `FAKE-2`... `Fiscal::fake()`
 lanza `LogicException` en producción.
 
+### Pruebas contra homologación (opcionales)
+
+`tests/Homologation` pega contra WSAA y WSCPE de homologación. **Nunca corren en CI** ni en `pest` a secas:
+el grupo `homologation` se aplica por directorio y `phpunit.xml` lo excluye. Sin las variables
+`FISCAL_HOMO_CERT`, `FISCAL_HOMO_KEY` y `FISCAL_HOMO_CUIT` se saltan. Fijan `Environment::Homologation`;
+no hay forma de apuntarlas a producción. Con un certificado de homologación propio:
+
+```bash
+docker run --rm -u "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer \
+  -e FISCAL_HOMO_CERT=/certs/homo.crt -e FISCAL_HOMO_KEY=/certs/homo.key -e FISCAL_HOMO_CUIT=<cuit> \
+  -v "$PWD":/app -v <carpeta-con-certificado>:/certs:ro -w /app fiscal-adapter-test \
+  vendor/bin/pest --group=homologation
+```
+
+El ticket de acceso (12 h) se guarda en `sys_get_temp_dir()` (modo 0600) para no pedir uno por corrida.
+
 ## Desarrollo
 
 Ver `CLAUDE.md`. Resumen: `composer test` (pest + pint + phpstan), corrido dentro de la imagen
