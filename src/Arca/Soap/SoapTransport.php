@@ -4,6 +4,8 @@ namespace Mnonm\FiscalAdapter\Arca\Soap;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Mnonm\FiscalAdapter\CallObserver;
 use Mnonm\FiscalAdapter\CallRecord;
@@ -33,16 +35,9 @@ final class SoapTransport
 
             $status = $response->status();
             $body = $response->body();
+            $failure = $this->classify($response);
 
-            $fault = $this->faultString($body);
-            if ($fault !== null) {
-                $fault = Redactor::redact($fault);
-                $failure = $this->isClientFault($body)
-                    ? Outcome::rejected([new Reason('soap_client_fault', $fault)])
-                    : Outcome::unavailable(new Reason('server_fault', "ARCA devolvió un error de servidor: {$fault}"));
-            } elseif (! $response->successful()) {
-                $failure = Outcome::unknown(new Reason('http_error', "ARCA respondió HTTP {$status} sin SOAP Fault."));
-            } else {
+            if ($failure === null) {
                 $this->record($call, $occurredAt, $startedAt, $status, $body, null);
 
                 return SoapResult::ok($body);
@@ -52,11 +47,71 @@ final class SoapTransport
             $failure = self::isCutAfterSending($message)
                 ? Outcome::unknown(new Reason('response_cut', "La conexión con ARCA se cortó después de enviar el pedido: {$message}"))
                 : Outcome::unavailable(new Reason('connection_failed', "No se pudo conectar con ARCA: {$message}"));
+        } catch (RequestException $exception) {
+            // Laravel la lanza cuando llegaron los encabezados (status >= 400, como el 500 de un SOAP
+            // Fault) y después falló la transferencia. Con un código de corte, el pedido pudo llegar.
+            $status = $exception->response->status();
+            $body = $exception->response->body();
+            $cut = self::cutCode($exception);
+            $failure = $cut !== null
+                ? Outcome::unknown(new Reason('response_cut', "La conexión con ARCA se cortó después de recibir los encabezados (cURL error {$cut}), con HTTP {$status}."))
+                : ($this->classify($exception->response) ?? Outcome::unknown(new Reason('http_error', "ARCA respondió HTTP {$status} y la transferencia falló.")));
         }
 
         $this->record($call, $occurredAt, $startedAt, $status, $body, $failure->reasons[0]->message);
 
         return SoapResult::failed($failure);
+    }
+
+    /**
+     * El desenlace de una respuesta HTTP, o null si es un 2xx sin SOAP Fault.
+     */
+    private function classify(Response $response): ?Outcome
+    {
+        $body = $response->body();
+        $fault = $this->faultString($body);
+
+        if ($fault !== null) {
+            $fault = Redactor::redact($fault);
+
+            return $this->isClientFault($body)
+                ? Outcome::rejected([new Reason('soap_client_fault', $fault)])
+                : Outcome::unavailable(new Reason('server_fault', "ARCA devolvió un error de servidor: {$fault}"));
+        }
+
+        if (! $response->successful()) {
+            return Outcome::unknown(new Reason('http_error', "ARCA respondió HTTP {$response->status()} sin SOAP Fault."));
+        }
+
+        return null;
+    }
+
+    /**
+     * El código de corte de cURL de una transferencia que falló con la respuesta ya empezada: del
+     * contexto del handler (errno) o, si no está, del mensaje de la excepción o de su causa.
+     */
+    private static function cutCode(RequestException $exception): ?int
+    {
+        $errorData = $exception->response->transferStats?->getHandlerErrorData();
+        $candidates = [];
+
+        if (is_int($errorData)) {
+            $candidates[] = "cURL error {$errorData}";
+        } elseif ($errorData instanceof \Throwable) {
+            $candidates[] = $errorData->getMessage();
+        }
+
+        for ($cause = $exception; $cause !== null; $cause = $cause->getPrevious()) {
+            $candidates[] = $cause->getMessage();
+        }
+
+        foreach ($candidates as $candidate) {
+            if (preg_match('/cURL error (18|28|52|55|56|92)\b/', $candidate, $matches) === 1) {
+                return (int) $matches[1];
+            }
+        }
+
+        return null;
     }
 
     /**

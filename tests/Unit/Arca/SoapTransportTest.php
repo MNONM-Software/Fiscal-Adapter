@@ -1,7 +1,12 @@
 <?php
 
+use GuzzleHttp\Psr7\Request as PsrRequest;
+use GuzzleHttp\Psr7\Response as PsrResponse;
+use GuzzleHttp\TransferStats;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapCall;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapTransport;
@@ -143,4 +148,53 @@ it('failure messages carry no secrets', function () {
         }
         Http::swap(app(Factory::class));
     }
+});
+
+/**
+ * What Laravel throws when the headers arrived (status >= 400) and the body was then cut.
+ */
+function cutRequestException(int $status, string $body, ?int $curlErrno = null): RequestException
+{
+    $response = new Response(new PsrResponse($status, [], $body));
+
+    if ($curlErrno !== null) {
+        $response->transferStats = new TransferStats(new PsrRequest('POST', 'https://arca.test/ws'), $response->toPsrResponse(), 30.0, $curlErrno);
+    }
+
+    return new RequestException($response);
+}
+
+describe('request exceptions with a response', function () {
+    it('a cURL cut code is unknown', function (int $errno) {
+        Http::fake(fn () => throw cutRequestException(500, '<soap:Envelope><soap:Bo', $errno));
+
+        $failure = (new SoapTransport(recordingObserver()))->call(soapCall())->failure;
+
+        expect($failure->isUnknown())->toBeTrue()->and($failure->reasonCodes())->toBe(['response_cut']);
+    })->with([18, 28, 52, 55, 56, 92]);
+
+    it('without a cut code is classified from its response', function (int $status, string $body, string $code, string $state) {
+        Http::fake(fn () => throw cutRequestException($status, $body));
+
+        $failure = (new SoapTransport(recordingObserver()))->call(soapCall())->failure;
+
+        expect($failure->{$state}())->toBeTrue()->and($failure->reasonCodes())->toBe([$code]);
+    })->with([
+        'client fault' => [500, soapFault('soap:Client', 'Token expirado'), 'soap_client_fault', 'isRejected'],
+        'server fault' => [500, soapFault('soap:Server', 'x'), 'server_fault', 'isUnavailable'],
+        'no fault' => [502, 'Bad gateway', 'http_error', 'isUnknown'],
+    ]);
+
+    it('is recorded and never thrown', function () {
+        Http::fake(fn () => throw cutRequestException(500, 'partial', 56));
+        $observer = recordingObserver();
+
+        $result = (new SoapTransport($observer))->call(soapCall());
+
+        expect($result->succeeded())->toBeFalse()
+            ->and($observer->records)->toHaveCount(1)
+            ->and($observer->records[0]->httpStatus)->toBe(500)
+            ->and($observer->records[0]->response)->toBe('partial')
+            ->and($observer->records[0]->error)->not->toBeNull();
+    });
 });

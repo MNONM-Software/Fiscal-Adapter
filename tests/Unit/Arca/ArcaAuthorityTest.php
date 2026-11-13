@@ -1,6 +1,11 @@
 <?php
 
 use Carbon\Carbon;
+use GuzzleHttp\Psr7\Request as PsrRequest;
+use GuzzleHttp\Psr7\Response as PsrResponse;
+use GuzzleHttp\TransferStats;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Mnonm\FiscalAdapter\Arca\Wscpe\ArcaWaybillQuery;
@@ -181,6 +186,17 @@ describe('wiring', function () {
         Http::fake(['*wscpe*' => Http::response('', 500)]);
 
         expect($authority->issue($context, Fixtures::waybill())->isUnknown())->toBeTrue();
+    });
+
+    it('a body cut after the headers is unknown, not an exception', function () {
+        [$authority, $context] = authority();
+        $response = new Response(new PsrResponse(500, [], '<soap:Envelope><soap:Bo'));
+        $response->transferStats = new TransferStats(new PsrRequest('POST', 'https://arca.test'), $response->toPsrResponse(), 30.0, 56);
+        Http::fake(fn () => throw new RequestException($response));
+
+        $outcome = $authority->issue($context, Fixtures::waybill());
+
+        expect($outcome->isUnknown())->toBeTrue()->and($outcome->reasonCodes())->toBe(['response_cut']);
     });
 
     it('rejects foreign documents', function () {
