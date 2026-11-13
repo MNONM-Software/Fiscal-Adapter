@@ -73,3 +73,30 @@ it('never exposes the key when dumped or serialized', function () {
     expect(print_r($credential, true))->not->toContain('PRIVATE KEY')->not->toContain('secret');
     expect(fn () => serialize($credential))->toThrow(LogicException::class);
 });
+
+it('computes the fingerprint from the parsed certificate', function () {
+    $paths = TestCertificate::create($this->dir);
+    $pem = file_get_contents($paths['certificate']);
+    $key = file_get_contents($paths['private_key']);
+
+    $clean = Credential::fromPem($pem, $key);
+    $noisy = Credential::fromPem("Bag Attributes\n    localKeyID: 01\nsubject=/CN=x\n".$pem, $key);
+
+    expect($clean->fingerprint())->toBe(openssl_x509_fingerprint($pem, 'sha256'))
+        ->and($noisy->fingerprint())->toBe($clean->fingerprint())
+        ->and($noisy->fingerprint())->not->toBe(hash('sha256', ''));
+});
+
+it('keeps the key and passphrase out of stack traces', function () {
+    $previous = ini_set('zend.exception_ignore_args', '0');
+    $paths = TestCertificate::create($this->dir, 'hunter2secret');
+
+    try {
+        Credential::fromFiles($paths['certificate'], $paths['private_key'], 'wrongpass99');
+        $this->fail('Expected InvalidCredential');
+    } catch (InvalidCredential $e) {
+        expect($e->getTraceAsString())->not->toContain('wrongpass99')->not->toContain('PRIVATE KEY');
+    } finally {
+        ini_set('zend.exception_ignore_args', $previous);
+    }
+});

@@ -9,12 +9,12 @@ final class Credential
 {
     private function __construct(
         private readonly string $certificatePem,
-        private readonly string $privateKeyPem,
-        private readonly ?string $passphrase,
+        #[\SensitiveParameter] private readonly string $privateKeyPem,
+        #[\SensitiveParameter] private readonly ?string $passphrase,
         private readonly string $fingerprint,
     ) {}
 
-    public static function fromFiles(string $certificatePath, string $privateKeyPath, ?string $passphrase = null): self
+    public static function fromFiles(string $certificatePath, string $privateKeyPath, #[\SensitiveParameter] ?string $passphrase = null): self
     {
         return self::fromPem(
             self::read($certificatePath, 'certificado'),
@@ -23,7 +23,7 @@ final class Credential
         );
     }
 
-    public static function fromPem(string $certificatePem, string $privateKeyPem, ?string $passphrase = null): self
+    public static function fromPem(string $certificatePem, #[\SensitiveParameter] string $privateKeyPem, #[\SensitiveParameter] ?string $passphrase = null): self
     {
         $certificate = @openssl_x509_read($certificatePem);
         if ($certificate === false) {
@@ -39,9 +39,12 @@ final class Credential
             throw new InvalidCredential('La clave privada no corresponde al certificado.');
         }
 
-        $der = self::toDer($certificatePem);
+        $fingerprint = openssl_x509_fingerprint($certificate, 'sha256');
+        if ($fingerprint === false) {
+            throw new InvalidCredential('No se pudo calcular la huella del certificado.');
+        }
 
-        return new self($certificatePem, $privateKeyPem, $passphrase, hash('sha256', $der));
+        return new self($certificatePem, $privateKeyPem, $passphrase, $fingerprint);
     }
 
     /** SHA-256 (hex) of the certificate in DER form. */
@@ -92,13 +95,5 @@ final class Credential
         }
 
         return $contents;
-    }
-
-    private static function toDer(string $pem): string
-    {
-        $body = preg_replace('/-----(BEGIN|END) CERTIFICATE-----|\s+/', '', $pem) ?? '';
-        $der = base64_decode($body, true);
-
-        return $der === false ? '' : $der;
     }
 }
