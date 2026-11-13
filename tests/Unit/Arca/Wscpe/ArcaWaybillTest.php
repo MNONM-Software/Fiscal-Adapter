@@ -23,7 +23,23 @@ it('rejects invalid documents naming the field', function (array $overrides, str
     'zero km' => [['km' => 0], 'km'],
     'zero branch' => [['branch' => 0], 'branch'],
     'negative order number' => [['orderNumber' => -1], 'orderNumber'],
+    'zero tare' => [['tareKg' => 0], 'tareKg'],
+    'negative tare' => [['tareKg' => -5], 'tareKg'],
+    'four plates' => [['plates' => ['AB123CD', 'AC456DE', 'AD789EF', 'ABC123']], 'plates'],
+    'branch over five digits' => [['branch' => 100000], 'branch'],
+    'km over five digits' => [['km' => 100000], 'km'],
+    'order number over eight digits' => [['orderNumber' => 100000000], 'orderNumber'],
 ]);
+
+it('accepts the upper limits', function () {
+    $waybill = Fixtures::waybill(['tareKg' => 1, 'plates' => ['AB123CD', 'AC456DE', 'ABC123'], 'branch' => 99999, 'km' => 99999, 'orderNumber' => 99999999]);
+
+    expect($waybill->normalizedPlates())->toHaveCount(3)
+        ->and($waybill->branch)->toBe(99999)
+        ->and($waybill->km)->toBe(99999)
+        ->and($waybill->orderNumber)->toBe(99999999)
+        ->and($waybill->tareKg)->toBe(1);
+});
 
 it('accepts the maximum gross weight', fn () => expect(Fixtures::waybill(['grossKg' => 88000])->grossKg)->toBe(88000));
 

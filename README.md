@@ -82,6 +82,21 @@ El resultado es siempre un valor, nunca una excepción por algo que dijo o no di
 
 - **`query()` devuelve `Authorized` para cualquier CPE encontrado, también uno anulado.** Quien llama
   tiene que mirar `$outcome->data['state']` (`AC` activo, `AN` anulado).
+- **Después de un `Unavailable` de `reconcile()`, reenviar el MISMO documento** (mismo número de
+  orden), no uno nuevo con el siguiente número. Si el original sí había quedado, ARCA contesta 2241
+  (`Unknown`) y se vuelve a reconciliar; con otro número saldrían dos CTG para el mismo camión. Un
+  `Unknown` de `reconcile()` (`reconcile_failed`, `identity_unverifiable`) tampoco autoriza a emitir
+  con otro número: se vuelve a reconciliar más tarde o se verifica a mano.
+- **El `authorityId` de una anulación puede ser sintético.** Si ARCA no devuelve el CTG y el
+  `ArcaWaybillAnnulment` no lo traía, el id es `"{sucursal}-{nroOrden}"` (p. ej. `"1-419"`), no un CTG.
+- **Delegación nueva → `forgetTicket()`.** El ticket de acceso guarda qué CUIT puede representar al
+  emitirse: una delegación hecha en ARCA no se ve hasta el próximo ticket. Después de delegar,
+  `Fiscal::authority('arca')->forgetTicket($context)` descarta el guardado y el próximo pedido
+  autentica de nuevo.
+- **`Cache::lock` necesita un cache compartido.** La renovación del ticket se serializa con
+  `Cache::lock`, así que el store de cache por defecto tiene que ser el mismo para todos los workers
+  y contenedores (Redis, Memcached, base de datos). Con `array` o `file` local cada proceso tiene su
+  propio lock, dos renuevan a la vez y uno se queda con `ticket_already_held`.
 - **No llamar dentro de una transacción `REPEATABLE READ`.** El ticket de acceso se renueva bajo un
   lock y se relee del almacén; dentro de una transacción con snapshot fijo no se vería el ticket que
   otro proceso acaba de guardar, y se pediría uno de más.
@@ -128,8 +143,9 @@ producción.
 
 `tests/Homologation` pega contra WSAA y WSCPE de homologación. **Nunca corren en CI** ni en `pest` a secas:
 el grupo `homologation` se aplica por directorio y `phpunit.xml` lo excluye. Sin las variables
-`FISCAL_HOMO_CERT`, `FISCAL_HOMO_KEY` y `FISCAL_HOMO_CUIT` se saltan. Fijan `Environment::Homologation`;
-no hay forma de apuntarlas a producción. Con un certificado de homologación propio:
+`FISCAL_HOMO_CERT`, `FISCAL_HOMO_KEY` y `FISCAL_HOMO_CUIT` se saltan. La suite fija
+`Environment::Homologation` en el código y un test (`points only at homologation endpoints`) verifica
+que las URLs resueltas sean las de homologación. Con un certificado de homologación propio:
 
 ```bash
 docker run --rm -u "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer \

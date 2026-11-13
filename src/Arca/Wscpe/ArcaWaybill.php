@@ -17,6 +17,15 @@ final readonly class ArcaWaybill implements Issuable
 
     public const MAX_GROSS_KG = 88000;
 
+    /** Límites de WSCPE (los mismos que valida #524). */
+    public const MAX_BRANCH = 99999;
+
+    public const MAX_ORDER_NUMBER = 99999999;
+
+    public const MAX_KM = 99999;
+
+    public const MAX_PLATES = 3;
+
     /** @var list<string> */
     private array $plates;
 
@@ -48,10 +57,18 @@ final readonly class ArcaWaybill implements Issuable
         public bool $declaredNotFumigated,
         public int $cpeType = self::AUTOMOTOR,
     ) {
-        foreach (['branch' => $branch, 'orderNumber' => $orderNumber, 'km' => $km] as $field => $value) {
+        foreach (['branch' => [$branch, self::MAX_BRANCH], 'orderNumber' => [$orderNumber, self::MAX_ORDER_NUMBER], 'km' => [$km, self::MAX_KM]] as $field => [$value, $max]) {
             if ($value <= 0) {
                 throw new InvalidDocument("El campo {$field} debe ser mayor que cero.");
             }
+
+            if ($value > $max) {
+                throw new InvalidDocument("El campo {$field} no puede superar {$max}.");
+            }
+        }
+
+        if ($tareKg < 1) {
+            throw new InvalidDocument('El campo tareKg (tara) debe ser de al menos 1 kg.');
         }
 
         if ($grossKg <= $tareKg) {
@@ -109,6 +126,10 @@ final readonly class ArcaWaybill implements Issuable
     {
         if ($plates === []) {
             throw new InvalidDocument('El campo plates (patentes) necesita al menos una patente.');
+        }
+
+        if (count($plates) > self::MAX_PLATES) {
+            throw new InvalidDocument('El campo plates (patentes) admite como máximo '.self::MAX_PLATES.' patentes.');
         }
 
         $normalized = [];

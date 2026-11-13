@@ -4,12 +4,16 @@ use Carbon\Carbon;
 use GuzzleHttp\Psr7\Request as PsrRequest;
 use GuzzleHttp\Psr7\Response as PsrResponse;
 use GuzzleHttp\TransferStats;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
-use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Mnonm\FiscalAdapter\Arca\Wsaa\TicketKey;
 use Mnonm\FiscalAdapter\Arca\Wscpe\ArcaWaybillQuery;
+use Mnonm\FiscalAdapter\CallContext;
 use Mnonm\FiscalAdapter\CallObserver;
 use Mnonm\FiscalAdapter\CallRecord;
 use Mnonm\FiscalAdapter\Contracts\Issuable;
@@ -165,13 +169,46 @@ describe('query', function () {
 
 describe('wiring', function () {
     it('represents the context CUIT, not the certificate one', function () {
-        [$authority, $context] = authority();
+        [$authority, $certificateContext] = authority();
+        $context = new CallContext($certificateContext->credential, '30500000003', $certificateContext->environment);
         fakeWscpe(W::response('AutorizarCPEAutomotorResp', W::HEADER));
 
         $authority->issue($context, Fixtures::waybill());
 
-        Http::assertSent(fn (Request $request) => str_contains($request->body(), '<cuitRepresentada>30712345671</cuitRepresentada>')
+        Http::assertSent(fn (Request $request) => str_contains($request->body(), '<cuitRepresentada>30500000003</cuitRepresentada>')
+            && str_contains($request->body(), '<cuitSolicitante>30500000003</cuitSolicitante>')
+            && ! str_contains($request->body(), '30712345671</cuitRepresentada>')
             && $request->header('SOAPAction')[0] === 'https://serviciosjava.afip.gob.ar/wscpe/autorizarCPEAutomotor');
+    });
+
+    it('a WSAA failure is unavailable: WSCPE was not contacted', function (Closure $wsaa, string $original) {
+        [$authority, $context] = authority(seedTicket: false);
+        Http::fake(['*wsaa*' => $wsaa]);
+
+        $outcome = $authority->issue($context, Fixtures::waybill());
+
+        expect($outcome->isUnavailable())->toBeTrue()
+            ->and($outcome->reasonCodes())->toBe(['auth_failed'])
+            ->and($outcome->reasons[0]->message)->toContain($original);
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'wscpe'));
+    })->with([
+        'timeout' => [fn () => fn () => throw new ConnectionException('cURL error 28: timed out'), 'cURL error 28'],
+        'client fault (expired certificate)' => [fn () => fn () => Http::response(soapClientFault('Certificado expirado'), 500), 'Certificado expirado'],
+        'malformed login' => [fn () => fn () => Http::response(WsaaResponses::withoutReturn(), 200), 'loginCmsReturn'],
+    ]);
+
+    it('a lock timeout on the ticket stays as it is', function () {
+        [$authority, $context] = authority(seedTicket: false, lockSeconds: 1);
+        Carbon::setTestNow(); // Lock::block() measures its wait with now(): frozen time would never time out.
+        $held = Cache::lock('fiscal-adapter:arca:wsaa:'.(new TicketKey($context->credential->fingerprint(), 'wscpe', $context->environment))->toString(), 30);
+        $held->get();
+        Http::fake();
+
+        $outcome = $authority->issue($context, Fixtures::waybill());
+        $held->release();
+
+        expect($outcome->isUnavailable())->toBeTrue()->and($outcome->reasonCodes())->toBe(['lock_timeout']);
+        Http::assertNothingSent();
     });
 
     it('propagates ticket failures without calling WSCPE', function () {

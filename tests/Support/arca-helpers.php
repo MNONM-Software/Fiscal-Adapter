@@ -36,7 +36,7 @@ function authorityCredential(): Credential
 /**
  * @return array{0: ArcaAuthority, 1: CallContext}
  */
-function authority(bool $seedTicket = true, ?CallObserver $observer = null): array
+function authority(bool $seedTicket = true, ?CallObserver $observer = null, int $lockSeconds = 90): array
 {
     Carbon::setTestNow('2026-10-08T12:00:00Z');
     Http::swap(new Factory);
@@ -53,7 +53,7 @@ function authority(bool $seedTicket = true, ?CallObserver $observer = null): arr
         $store->put(new TicketKey($context->credential->fingerprint(), 'wscpe', $context->environment), new AccessTicket('TOK', 'SIG', CarbonImmutable::parse('2026-10-08T18:00:00Z')));
     }
 
-    $tickets = new AccessTicketProvider(new WsaaClient($transport, $endpoints), $store);
+    $tickets = new AccessTicketProvider(new WsaaClient($transport, $endpoints), $store, $lockSeconds);
 
     return [new ArcaAuthority($tickets, $transport, $endpoints), $context];
 }

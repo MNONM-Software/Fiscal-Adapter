@@ -35,6 +35,9 @@ final class ArcaAuthority implements ArcaWaybillAuthority
 
     private const STATE_ANNULLED = 'AN';
 
+    /** Fallas del ticket que ya son `Unavailable` con un código propio. */
+    private const OWN_TICKET_FAILURES = ['ticket_already_held', 'lock_timeout'];
+
     public function __construct(
         private readonly AccessTicketProvider $tickets,
         private readonly SoapTransport $transport,
@@ -360,7 +363,7 @@ final class ArcaAuthority implements ArcaWaybillAuthority
         $ticket = $this->tickets->for($context, self::SERVICE);
 
         if ($ticket instanceof Outcome) {
-            return $ticket;
+            return $this->ticketFailed($ticket);
         }
 
         $result = $this->transport->call(new SoapCall(
@@ -374,6 +377,22 @@ final class ArcaAuthority implements ArcaWaybillAuthority
         ));
 
         return $result->failure ?? (string) $result->body;
+    }
+
+    /**
+     * Sin ticket no se contactó a WSCPE: reintentar es seguro, así que cualquier falla de WSAA (un
+     * timeout, un Fault `Client` por certificado vencido, una respuesta ilegible) es `Unavailable`.
+     * `ticket_already_held` y `lock_timeout` ya lo son y conservan su código.
+     */
+    private function ticketFailed(Outcome $outcome): Outcome
+    {
+        if ($outcome->isUnavailable() && array_intersect($outcome->reasonCodes(), self::OWN_TICKET_FAILURES) !== []) {
+            return $outcome;
+        }
+
+        $detail = implode('; ', array_map(fn (Reason $reason): string => "{$reason->code} {$reason->message}", $outcome->reasons));
+
+        return Outcome::unavailable(new Reason('auth_failed', "No se pudo obtener el ticket de acceso de WSAA; WSCPE no fue contactado y se puede reintentar. Motivo: {$detail}"));
     }
 
     /**

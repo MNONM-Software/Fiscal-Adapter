@@ -137,7 +137,9 @@ describe('lookup failures', function () {
 
         $outcome = $authority->reconcile($context, $document);
 
-        expect($outcome->isRejected())->toBeFalse();
+        expect($outcome->isRejected())->toBeFalse()
+            ->and($outcome->isUnavailable())->toBeTrue()
+            ->and($outcome->reasonCodes())->toBe(['auth_failed']);
         Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'wscpe'));
     })->with(['issue', 'annulment']);
 });

@@ -40,7 +40,9 @@ real de producción.
 ## La frontera
 
 **El núcleo no conoce ARCA.** Nada de `src/` fuera de `src/Arca/` nombra CUIT, CTG, ticket, WSAA ni
-SOAP. `tests/ArchTest.php` lo cuida para `Contracts`, `Exceptions` y `Testing`.
+SOAP. `tests/ArchTest.php` lo cuida para `Contracts`, `Exceptions`, `Testing` y las clases de la
+raíz salvo `FiscalAdapterServiceProvider`. `Facades/Fiscal` es la otra excepción: `fake()` devuelve
+`Arca\Testing\FakeArcaAuthority`.
 
 **La librería no toca bases de datos** ni conoce modelos de Artisano. Cache y locks van por
 `Cache`, nunca por `Illuminate\Database`.

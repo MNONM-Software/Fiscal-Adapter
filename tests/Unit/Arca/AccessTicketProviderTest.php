@@ -4,6 +4,7 @@ use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Mnonm\FiscalAdapter\Arca\ArcaEndpoints;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapTransport;
@@ -12,6 +13,7 @@ use Mnonm\FiscalAdapter\Arca\Wsaa\AccessTicketProvider;
 use Mnonm\FiscalAdapter\Arca\Wsaa\InMemoryTicketStore;
 use Mnonm\FiscalAdapter\Arca\Wsaa\MissingTicketStore;
 use Mnonm\FiscalAdapter\Arca\Wsaa\TicketKey;
+use Mnonm\FiscalAdapter\Arca\Wsaa\TicketStore;
 use Mnonm\FiscalAdapter\Arca\Wsaa\WsaaClient;
 use Mnonm\FiscalAdapter\CallContext;
 use Mnonm\FiscalAdapter\CallObserver;
@@ -122,6 +124,47 @@ it('ticket already held without a stored one is unavailable', function () {
     expect($outcome->isUnavailable())->toBeTrue()
         ->and($outcome->reasonCodes())->toBe(['ticket_already_held'])
         ->and($outcome->reasons[0]->message)->toContain('hasta 12 horas');
+});
+
+it('recognizes the already held message with or without accent and in any case', function (string $message) {
+    [$provider, , $context] = ticketProvider();
+    Http::fake(['*' => Http::response(str_replace('El CEE ya posee un TA valido para el acceso al WSN solicitado', $message, WsaaResponses::alreadyHasTicket()), 500)]);
+
+    expect($provider->for($context, 'wscpe')->reasonCodes())->toBe(['ticket_already_held']);
+})->with([
+    'accented' => ['El CEE ya posee un TA válido para el acceso al WSN solicitado'],
+    'upper case' => ['EL CEE YA POSEE UN TA VÁLIDO PARA EL ACCESO AL WSN SOLICITADO'],
+]);
+
+it('returns a fresh ticket even if storing it fails, and reports the failure', function () {
+    Carbon::setTestNow('2026-10-08T12:00:00Z');
+    Exceptions::fake();
+    $store = new class implements TicketStore
+    {
+        public function get(TicketKey $key): ?AccessTicket
+        {
+            return null;
+        }
+
+        public function put(TicketKey $key, AccessTicket $ticket): void
+        {
+            throw new RuntimeException('store down');
+        }
+
+        public function forget(TicketKey $key): void {}
+    };
+    $observer = new class implements CallObserver
+    {
+        public function record(CallRecord $record): void {}
+    };
+    $provider = new AccessTicketProvider(new WsaaClient(new SoapTransport($observer), new ArcaEndpoints), $store);
+    $context = new CallContext(ticketCredential(), '30712345671', Environment::Homologation);
+    fakeLogin('NEW');
+
+    $ticket = $provider->for($context, 'wscpe');
+
+    expect($ticket)->toBeInstanceOf(AccessTicket::class)->token->toBe('NEW');
+    Exceptions::assertReported(fn (RuntimeException $exception) => $exception->getMessage() === 'store down');
 });
 
 it('other WSAA rejections pass through', function () {

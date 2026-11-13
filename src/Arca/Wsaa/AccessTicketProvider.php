@@ -80,15 +80,24 @@ final class AccessTicketProvider
                 : $result;
         }
 
-        $this->store->put($key, $result);
+        try {
+            $this->store->put($key, $result);
+        } catch (\Throwable $exception) {
+            // WSAA no da otro mientras éste esté vigente: perderlo deja la credencial sin autenticar
+            // hasta 12 h. Se reporta y se usa igual en esta llamada.
+            report($exception);
+        }
 
         return $result;
     }
 
+    /**
+     * «ya posee un TA valido» / «válido»: se mira sólo el prefijo, sin importar acento ni mayúsculas.
+     */
     private function isTicketAlreadyHeld(Outcome $outcome): bool
     {
         foreach ($outcome->reasons as $reason) {
-            if ($reason->code === 'soap_client_fault' && stripos($reason->message, 'ya posee un TA valido') !== false) {
+            if ($reason->code === 'soap_client_fault' && mb_stripos($reason->message, 'ya posee un TA') !== false) {
                 return true;
             }
         }
