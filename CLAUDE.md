@@ -41,3 +41,14 @@ SOAP. `tests/ArchTest.php` lo cuida para `Contracts`, `Exceptions` y `Testing`.
 
 **La librería no toca bases de datos** ni conoce modelos de Artisano. Cache y locks van por
 `Cache`, nunca por `Illuminate\Database`.
+
+## Estructura
+
+- `src/` raíz: núcleo (`Outcome`, `CallContext`, `Credential`, `CallObserver`, `FiscalManager`),
+  `Contracts/`, `Exceptions/`, `Facades/Fiscal` (con `fake()`), `Testing/FakeAuthority`.
+- `src/Arca/`: el driver ARCA. `Wsaa/` (ticket de acceso, `TicketStore`), `Wscpe/` (documentos y
+  XML de cartas de porte), `Soap/` (transporte sobre `Http`).
+- `FiscalAdapterServiceProvider` es el único punto de la raíz que arma cosas de ARCA (la fábrica
+  `arca` del manager, con el `TicketStore` del contenedor o `MissingTicketStore` si no hay uno).
+- Agregar una autoridad: `Fiscal::extend('nombre', fn () => new MiAutoridad(...))`.
+- Tests: `tests/Unit` (puros), `tests/Feature` (provider, fachada, fake), `tests/Homologation`.
