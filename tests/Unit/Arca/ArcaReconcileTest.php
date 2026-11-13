@@ -53,6 +53,15 @@ describe('issue reconciliation', function () {
         expect($outcome->isUnavailable())->toBeTrue()->and($outcome->reasonCodes())->toBe(['not_found']);
     });
 
+    it('includes the ARCA errors in the not found message', function () {
+        [$authority, $context] = authority();
+        fakeWscpe(W::response('ConsultarCPEAutomotorResp', W::error('2010', 'No existe')));
+
+        $outcome = $authority->reconcile($context, Fixtures::waybill());
+
+        expect($outcome->reasons[0]->code)->toBe('not_found')->and($outcome->reasons[0]->message)->toContain('ARCA respondió: 2010 No existe');
+    });
+
     it('missing identity fields do not match', function () {
         [$authority, $context] = authority();
         fakeWscpe(W::response('ConsultarCPEAutomotorResp', W::HEADER));

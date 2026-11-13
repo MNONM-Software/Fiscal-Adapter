@@ -148,6 +148,78 @@ final class ArcaAuthority implements FiscalAuthority
         throw new UnsupportedDocument('ARCA sólo reconcilia cartas de porte y sus anulaciones; llegó '.$document::class.'.');
     }
 
+    /**
+     * Último número de orden usado en una sucursal: el siguiente es éste más uno.
+     */
+    public function lastOrderNumber(CallContext $context, int $branch, int $cpeType = ArcaWaybill::AUTOMOTOR): Outcome
+    {
+        $body = '<solicitud><sucursal>'.WscpeXml::text($branch).'</sucursal><tipoCPE>'.WscpeXml::text($cpeType).'</tipoCPE></solicitud>';
+        $found = $this->consultRaw($context, 'consultarUltNroOrden', fn (AccessTicket $ticket, Cuit $cuit) => WscpeXml::envelope('ConsultarUltNroOrdenReq', $ticket, $cuit, $body));
+
+        if ($found instanceof Outcome) {
+            return $found;
+        }
+
+        ['respuesta' => $respuesta, 'errors' => $errors] = $found;
+
+        if ($errors !== []) {
+            return Outcome::rejected($errors);
+        }
+
+        if (trim((string) $respuesta->nroOrden) === '') {
+            return $this->malformed();
+        }
+
+        $number = (int) $respuesta->nroOrden;
+
+        return Outcome::authorized((string) $number, ['last_order_number' => $number]);
+    }
+
+    public function provinces(CallContext $context): Outcome
+    {
+        return $this->catalog($context, 'consultarProvincias', 'ConsultarProvinciasReq', '', 'provincia');
+    }
+
+    public function localities(CallContext $context, int $provinceCode): Outcome
+    {
+        return $this->catalog($context, 'consultarLocalidadesPorProvincia', 'ConsultarLocalidadesPorProvinciaReq', '<solicitud><codProvincia>'.WscpeXml::text($provinceCode).'</codProvincia></solicitud>', 'localidad');
+    }
+
+    public function grainTypes(CallContext $context): Outcome
+    {
+        return $this->catalog($context, 'consultarTiposGrano', 'ConsultarTiposGranoReq', '', 'grano');
+    }
+
+    /**
+     * Descarta el ticket de WSCPE guardado: el próximo pedido vuelve a pasar por WSAA.
+     */
+    public function forgetTicket(CallContext $context): void
+    {
+        $this->tickets->forget($context, self::SERVICE);
+    }
+
+    private function catalog(CallContext $context, string $method, string $element, string $body, string $itemTag): Outcome
+    {
+        $found = $this->consultRaw($context, $method, fn (AccessTicket $ticket, Cuit $cuit) => WscpeXml::envelope($element, $ticket, $cuit, $body));
+
+        if ($found instanceof Outcome) {
+            return $found;
+        }
+
+        ['respuesta' => $respuesta, 'errors' => $errors] = $found;
+
+        if ($errors !== []) {
+            return Outcome::rejected($errors);
+        }
+
+        $items = [];
+        foreach ($respuesta->{$itemTag} as $item) {
+            $items[] = ['code' => (int) $item->codigo, 'name' => trim((string) $item->descripcion)];
+        }
+
+        return Outcome::authorized($method, ['items' => $items]);
+    }
+
     private function reconcileIssue(CallContext $context, ArcaWaybill $waybill): Outcome
     {
         $found = $this->consult($context, ArcaWaybillQuery::byOrderNumber($waybill->branch, $waybill->orderNumber, $waybill->cpeType));
@@ -159,7 +231,11 @@ final class ArcaAuthority implements FiscalAuthority
         ['data' => $data, 'errors' => $errors] = $found;
 
         if ($data['ctg'] === null) {
-            return Outcome::unavailable(new Reason('not_found', 'ARCA no tiene una carta de porte con este número de orden; es seguro reenviarla.'));
+            $detail = $errors !== []
+                ? ' ARCA respondió: '.implode('; ', array_map(fn (Reason $reason): string => "{$reason->code} {$reason->message}", $errors)).'.'
+                : '';
+
+            return Outcome::unavailable(new Reason('not_found', 'ARCA no tiene una carta de porte con este número de orden; es seguro reenviarla.'.$detail));
         }
 
         if (! $this->matchesIdentity($waybill, $data)) {
@@ -218,7 +294,26 @@ final class ArcaAuthority implements FiscalAuthority
      */
     private function consult(CallContext $context, ArcaWaybillQuery $query): Outcome|array
     {
-        $response = $this->call($context, 'consultarCPEAutomotor', fn (AccessTicket $ticket, Cuit $cuit) => $query->envelope($ticket, $cuit));
+        $found = $this->consultRaw($context, 'consultarCPEAutomotor', fn (AccessTicket $ticket, Cuit $cuit) => $query->envelope($ticket, $cuit));
+
+        if ($found instanceof Outcome) {
+            return $found;
+        }
+
+        ['respuesta' => $respuesta, 'errors' => $errors] = $found;
+
+        return ['data' => WaybillResult::data($respuesta), 'errors' => $errors];
+    }
+
+    /**
+     * Pedido de sólo lectura: ticket, transporte, `<respuesta>` y el 500 de ARCA, comunes a toda consulta.
+     *
+     * @param  \Closure(AccessTicket, Cuit): string  $envelope
+     * @return Outcome|array{respuesta: \SimpleXMLElement, errors: list<Reason>} el desenlace si la consulta falló o fue ambigua
+     */
+    private function consultRaw(CallContext $context, string $method, \Closure $envelope): Outcome|array
+    {
+        $response = $this->call($context, $method, $envelope);
 
         if ($response instanceof Outcome) {
             return $response;
@@ -234,7 +329,7 @@ final class ArcaAuthority implements FiscalAuthority
             return $failure;
         }
 
-        return ['data' => WaybillResult::data($respuesta), 'errors' => $errors];
+        return ['respuesta' => $respuesta, 'errors' => $errors];
     }
 
     /**
