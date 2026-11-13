@@ -14,7 +14,9 @@ it('includes the offending input in the error message', function () {
     expect(fn () => Cuit::from('30712345678'))->toThrow(InvalidDocument::class, '30712345678');
 });
 
-it('rejects an unknown prefix', fn () => expect(Cuit::tryFrom('12123456786'))->toBeNull());
+it('rejects an unknown prefix even with a valid check digit', fn () => expect(Cuit::tryFrom('31000000003'))->toBeNull());
+
+it('maps check digit 10 to 9', fn () => expect(Cuit::from('20000000019')->value)->toBe('20000000019'));
 
 it('rejects wrong length and null', fn () => expect(Cuit::tryFrom('3071234567'))->toBeNull()->and(Cuit::tryFrom(null))->toBeNull());
 
