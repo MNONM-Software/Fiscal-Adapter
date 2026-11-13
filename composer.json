@@ -1,0 +1,57 @@
+{
+    "name": "mnonm/fiscal-adapter",
+    "description": "Cliente de autoridades fiscales (ARCA, luego SIFEN) para proyectos Laravel.",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "ext-openssl": "*",
+        "ext-simplexml": "*",
+        "illuminate/support": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/cache": "^13.0",
+        "illuminate/events": "^13.0",
+        "illuminate/contracts": "^13.0"
+    },
+    "require-dev": {
+        "pestphp/pest": "^4.0",
+        "orchestra/testbench": "^11.2",
+        "laravel/pint": "^1.32",
+        "phpstan/phpstan": "^2.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mnonm\\FiscalAdapter\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Mnonm\\FiscalAdapter\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Mnonm\\FiscalAdapter\\FiscalAdapterServiceProvider"
+            ],
+            "aliases": {
+                "Fiscal": "Mnonm\\FiscalAdapter\\Facades\\Fiscal"
+            }
+        }
+    },
+    "scripts": {
+        "test": [
+            "vendor/bin/pest",
+            "vendor/bin/pint --test",
+            "vendor/bin/phpstan analyse"
+        ]
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

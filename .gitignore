@@ -1,0 +1,9 @@
+/vendor
+composer.lock
+.env*
+*.key
+*.pem
+*.crt
+*.p12
+/credentials
+.phpunit.cache

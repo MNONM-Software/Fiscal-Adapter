@@ -1,0 +1,15 @@
+# Imagen para correr la suite de este paquete en una máquina sin PHP en el host.
+#
+#   docker build -f Dockerfile.test -t fiscal-adapter-test .
+#   docker run --rm -u "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer -v "$PWD":/app -w /app fiscal-adapter-test vendor/bin/pest
+#
+# PHP 8.3 y no 8.4: el paquete apunta a ^8.3 y los proyectos que lo instalan
+# corren 8.3. Testear sobre 8.4 dejaría pasar sintaxis que en producción no compila.
+# openssl y simplexml ya vienen compilados en la imagen oficial.
+FROM php:8.3-cli-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
