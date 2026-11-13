@@ -62,7 +62,7 @@ final readonly class ArcaWaybill implements Issuable
             throw new InvalidDocument('El campo grossKg (peso bruto) no puede superar '.self::MAX_GROSS_KG.' kg.');
         }
 
-        if (preg_match('/^\d{4}$/', $harvest) !== 1) {
+        if (preg_match('/^\d{4}\z/', $harvest) !== 1) {
             throw new InvalidDocument("El campo harvest (cosecha) debe tener 4 dígitos, por ejemplo 2526; llegó «{$harvest}».");
         }
 

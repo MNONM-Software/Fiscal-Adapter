@@ -35,7 +35,7 @@ final class WscpeXml
 
     public static function text(string|int $value): string
     {
-        return htmlspecialchars((string) $value, ENT_XML1);
+        return htmlspecialchars((string) $value, ENT_XML1 | ENT_SUBSTITUTE);
     }
 
     public static function dateTime(\DateTimeInterface $value): string

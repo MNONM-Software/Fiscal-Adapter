@@ -26,3 +26,5 @@ it('rejects invalid documents naming the field', function (array $overrides, str
 ]);
 
 it('accepts the maximum gross weight', fn () => expect(Fixtures::waybill(['grossKg' => 88000])->grossKg)->toBe(88000));
+
+it('rejects a harvest with a trailing newline', fn () => expect(fn () => Fixtures::waybill(['harvest' => "2526\n"]))->toThrow(InvalidDocument::class, 'harvest'));
