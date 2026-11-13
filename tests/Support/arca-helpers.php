@@ -36,12 +36,12 @@ function authorityCredential(): Credential
 /**
  * @return array{0: ArcaAuthority, 1: CallContext}
  */
-function authority(bool $seedTicket = true): array
+function authority(bool $seedTicket = true, ?CallObserver $observer = null): array
 {
     Carbon::setTestNow('2026-10-08T12:00:00Z');
     Http::swap(new Factory);
     $store = new InMemoryTicketStore;
-    $observer = new class implements CallObserver
+    $observer ??= new class implements CallObserver
     {
         public function record(CallRecord $record): void {}
     };

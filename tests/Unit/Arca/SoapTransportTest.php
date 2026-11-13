@@ -7,6 +7,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapCall;
 use Mnonm\FiscalAdapter\Arca\Soap\SoapTransport;
@@ -197,4 +198,21 @@ describe('request exceptions with a response', function () {
             ->and($observer->records[0]->response)->toBe('partial')
             ->and($observer->records[0]->error)->not->toBeNull();
     });
+});
+
+it('reports an observer failure and still returns the result', function () {
+    Exceptions::fake();
+    Http::fake(['*' => Http::response('<ok/>', 200)]);
+    $observer = new class implements CallObserver
+    {
+        public function record(CallRecord $record): void
+        {
+            throw new RuntimeException('observer down');
+        }
+    };
+
+    $result = (new SoapTransport($observer))->call(soapCall());
+
+    expect($result->succeeded())->toBeTrue()->and($result->body)->toBe('<ok/>');
+    Exceptions::assertReported(RuntimeException::class);
 });

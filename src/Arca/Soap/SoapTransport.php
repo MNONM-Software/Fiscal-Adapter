@@ -142,7 +142,20 @@ final class SoapTransport
         return (bool) preg_match('/<faultcode[^>]*>\s*(?:[\w-]+:)?(?:Client|Sender)\b/i', $body);
     }
 
+    /**
+     * Un observer que falla se reporta y no cambia el resultado: la llamada a ARCA ya ocurrió, y
+     * convertir un `Authorized` en una excepción haría reintentar algo que quedó emitido.
+     */
     private function record(SoapCall $call, CarbonImmutable $occurredAt, int $startedAt, ?int $status, ?string $response, ?string $error): void
+    {
+        try {
+            $this->notify($call, $occurredAt, $startedAt, $status, $response, $error);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function notify(SoapCall $call, CarbonImmutable $occurredAt, int $startedAt, ?int $status, ?string $response, ?string $error): void
     {
         $this->observer->record(new CallRecord(
             authority: 'arca',

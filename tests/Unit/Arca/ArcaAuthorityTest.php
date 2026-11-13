@@ -7,8 +7,11 @@ use GuzzleHttp\TransferStats;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Mnonm\FiscalAdapter\Arca\Wscpe\ArcaWaybillQuery;
+use Mnonm\FiscalAdapter\CallObserver;
+use Mnonm\FiscalAdapter\CallRecord;
 use Mnonm\FiscalAdapter\Contracts\Issuable;
 use Mnonm\FiscalAdapter\Exceptions\UnsupportedDocument;
 use Mnonm\FiscalAdapter\Tests\Support\Fixtures;
@@ -197,6 +200,24 @@ describe('wiring', function () {
         $outcome = $authority->issue($context, Fixtures::waybill());
 
         expect($outcome->isUnknown())->toBeTrue()->and($outcome->reasonCodes())->toBe(['response_cut']);
+    });
+
+    it('an observer that throws does not turn a completed call into an exception', function () {
+        Exceptions::fake();
+        $observer = new class implements CallObserver
+        {
+            public function record(CallRecord $record): void
+            {
+                throw new RuntimeException('observer down');
+            }
+        };
+        [$authority, $context] = authority(observer: $observer);
+        fakeWscpe(W::response('AutorizarCPEAutomotorResp', W::HEADER));
+
+        $outcome = $authority->issue($context, Fixtures::waybill());
+
+        expect($outcome->isAuthorized())->toBeTrue()->and($outcome->authorityId)->toBe('101234567890');
+        Exceptions::assertReported(fn (RuntimeException $exception) => $exception->getMessage() === 'observer down');
     });
 
     it('rejects foreign documents', function () {

@@ -39,6 +39,10 @@ $this->app->singleton(\Mnonm\FiscalAdapter\Arca\Wsaa\TicketStore::class, MiTicke
 Opcional: ligar un `CallObserver` propio. Si no, se usa `EventCallObserver`, que dispara
 `FiscalCallRecorded` por cada llamada al organismo.
 
+El observer **no debe lanzar**: la llamada ya ocurrió. Si lanza, el paquete reporta la excepción con
+`report()` y devuelve el resultado igual (sin ese registro). La respuesta que recibe puede ser grande:
+una carta de porte autorizada trae el PDF en base64.
+
 ### Emitir
 
 ```php
