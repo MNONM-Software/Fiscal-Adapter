@@ -374,6 +374,7 @@ final class ArcaAuthority implements ArcaWaybillAuthority
             $envelope($ticket, $cuit),
             $context->environment,
             $cuit->value,
+            $context->reference,
         ));
 
         return $result->failure ?? (string) $result->body;

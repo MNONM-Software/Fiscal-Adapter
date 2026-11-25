@@ -170,6 +170,7 @@ final class SoapTransport
             durationMs: intdiv(hrtime(true) - $startedAt, 1_000_000),
             error: $error,
             occurredAt: $occurredAt,
+            reference: $call->reference,
         ));
     }
 }

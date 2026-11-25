@@ -139,8 +139,10 @@ en un adaptador. **[C]**
 - **Excepciones** sólo para errores de programación o configuración: credencial ilegible, ambiente sin URL,
   documento que el adaptador no soporta, datos inválidos antes de mandar. **[C]**
 - **`CallObserver`** — callback que recibe un `CallRecord` por cada llamada al organismo: organismo, servicio,
-  método, ambiente, URL, representado, pedido y respuesta **ya sin secretos**, código HTTP, duración, error.
-  La librería no lo guarda; quien la usa decide dónde (Artisano: tabla con retención de 10 años). **[U: lo
+  método, ambiente, URL, representado, pedido y respuesta **ya sin secretos**, código HTTP, duración, error,
+  y la `reference` opcional que trajo el `CallContext` (un id opaco de quien llama, que la librería no lee y
+  copia a todas las llamadas que ese contexto dispara, login de WSAA incluido; agregado el 25/11/2026 para que
+  Artisano ate cada llamada a su pedido sin estado implícito). La librería no lo guarda; quien la usa decide dónde (Artisano: tabla con retención de 10 años). **[U: lo
   guarda el Back; C: forma]** Con la integración de Laravel se despacha como evento.
 
 ### 4.3 Integración con Laravel

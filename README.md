@@ -39,6 +39,14 @@ $this->app->singleton(\Mnonm\FiscalAdapter\Arca\Wsaa\TicketStore::class, MiTicke
 Opcional: ligar un `CallObserver` propio. Si no, se usa `EventCallObserver`, que dispara
 `FiscalCallRecorded` por cada llamada al organismo.
 
+Para atar cada llamada registrada a un registro propio (por ejemplo, el pedido que la originó), pasá
+un id opaco como `reference` en el `CallContext`: la librería no lo lee y lo copia al `CallRecord`
+de todas las llamadas que ese contexto dispara, incluido el login de WSAA.
+
+```php
+$context = new CallContext($credential, '30712345671', Environment::Production, reference: (string) $pedido->id);
+```
+
 El observer **no debe lanzar**: la llamada ya ocurrió. Si lanza, el paquete reporta la excepción con
 `report()` y devuelve el resultado igual (sin ese registro). La respuesta que recibe puede ser grande:
 una carta de porte autorizada trae el PDF en base64.

@@ -14,5 +14,6 @@ final readonly class SoapCall
         public string $envelope,
         public Environment $environment,
         public ?string $representedTaxId = null,
+        public ?string $reference = null,
     ) {}
 }

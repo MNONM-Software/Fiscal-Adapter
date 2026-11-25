@@ -21,6 +21,23 @@ use Mnonm\FiscalAdapter\Credential;
 use Mnonm\FiscalAdapter\Environment;
 use Mnonm\FiscalAdapter\Tests\Support\TestCertificate;
 
+/**
+ * Observer that keeps every record it receives, in order, in `$records`.
+ */
+function recordingObserver(): object
+{
+    return new class implements CallObserver
+    {
+        /** @var list<CallRecord> */
+        public array $records = [];
+
+        public function record(CallRecord $record): void
+        {
+            $this->records[] = $record;
+        }
+    };
+}
+
 function authorityCredential(): Credential
 {
     $dir = sys_get_temp_dir().'/auth-'.bin2hex(random_bytes(4));
