@@ -15,20 +15,6 @@ use Mnonm\FiscalAdapter\CallObserver;
 use Mnonm\FiscalAdapter\CallRecord;
 use Mnonm\FiscalAdapter\Environment;
 
-function recordingObserver(): object
-{
-    return new class implements CallObserver
-    {
-        /** @var list<CallRecord> */
-        public array $records = [];
-
-        public function record(CallRecord $record): void
-        {
-            $this->records[] = $record;
-        }
-    };
-}
-
 function soapCall(string $envelope = '<env/>'): SoapCall
 {
     return new SoapCall('wscpe', 'dummy', 'https://arca.test/ws', 'urn:dummy', $envelope, Environment::Homologation, '30712345671');

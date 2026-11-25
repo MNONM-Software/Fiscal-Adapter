@@ -19,5 +19,6 @@ final readonly class CallRecord
         public int $durationMs,
         public ?string $error,
         public CarbonImmutable $occurredAt,
+        public ?string $reference = null,
     ) {}
 }

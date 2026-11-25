@@ -39,6 +39,7 @@ final class WsaaClient
             envelope: $envelope,
             environment: $context->environment,
             representedTaxId: $context->representedTaxId,
+            reference: $context->reference,
         ));
 
         if (! $result->succeeded()) {
